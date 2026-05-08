@@ -1,11 +1,11 @@
-# BabelCam - Live Video Translation
+# AnyTalk - Live Video Translation
 
-Real-time peer-to-peer video calls with live Hindi/English subtitle translation.
+Real-time peer-to-peer video calls with live English/Japanese and English/German subtitle translation.
 
 ## Stack
 - **Frontend**: Plain HTML + CSS + Vanilla JS
 - **Backend**: FastAPI + native WebSockets
-- **Speech**: Browser media capture + optional local Whisper transcription
+- **Speech**: Browser media capture + optional local Whisper transcription for English, Japanese, and German
 - **Translation**: LibreTranslate
 - **Video**: WebRTC via `simple-peer`
 
@@ -27,7 +27,9 @@ copy .env.example .env
 Update `.env` if you want to point translation at a local LibreTranslate instance:
 - `LIBRETRANSLATE_URL=http://localhost:5000/translate`
 
-Optional Whisper settings are also listed in `.env.example`. If Whisper is not installed, the app still works with manual text and quick phrases.
+Optional Whisper settings are also listed in `.env.example`. The default Whisper model is `tiny` to keep speech-to-text latency low. If Whisper is not installed, the app still works with manual text.
+
+
 
 ### 3. Run the FastAPI server
 ```cmd
@@ -40,7 +42,7 @@ python -m app.main --reload
 
 If `certs/key.pem` and `certs/cert.pem` exist, the server starts with HTTPS automatically. Otherwise it runs on HTTP.
 
-#### "Regenerate certificates"
+#Regenerate certificates
 → Delete `certs/` folder
 → Run `npm run generate-certs` again
 
@@ -48,7 +50,7 @@ If `certs/key.pem` and `certs/cert.pem` exist, the server starts with HTTPS auto
 - Open `http://localhost:3000` or `https://localhost:3000` in two Chrome/Edge tabs
 - Join the same room code in both tabs
 - Allow camera and microphone access
-- Start speaking, or use quick phrases/manual text if Whisper is unavailable
+- Start speaking, or use manual text if Whisper is unavailable
 
 ## Architecture
 

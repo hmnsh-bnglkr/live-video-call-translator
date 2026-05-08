@@ -34,7 +34,7 @@ CERT_FILE = CERTS_DIR / "cert.pem"
 load_dotenv(BASE_DIR / ".env")
 
 PORT = int(os.getenv("PORT", "3000"))
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "tiny")  # Changed from "base" to "tiny" for faster transcription
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "tiny")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_BACKEND = os.getenv("WHISPER_BACKEND", "auto")
 LIBRETRANSLATE_URL = os.getenv("LIBRETRANSLATE_URL", "https://libretranslate.de/translate")
@@ -44,55 +44,98 @@ _whisper_model: WhisperModel | None = None
 
 WHISPER_LANG_MAP = {
     "en": "en",
-    "hi": "hi",
+    "ja": "ja",
+    "de": "de",
 }
 
+SUPPORTED_TRANSLATION_PAIRS = {"en-ja", "ja-en", "en-de", "de-en"}
+
 SIMPLE_TRANSLATIONS = {
-    "en-hi": {
-        "hello": "नमस्ते",
-        "hi": "नमस्ते",
-        "how are you": "आप कैसे हैं",
-        "thank you": "धन्यवाद",
-        "thanks": "धन्यवाद",
-        "goodbye": "अलविदा",
-        "bye": "अलविदा",
-        "yes": "हाँ",
-        "no": "नहीं",
-        "ok": "ठीक है",
-        "okay": "ठीक है",
-        "good": "अच्छा",
-        "bad": "बुरा",
-        "i am fine": "मैं ठीक हूँ",
-        "sorry": "क्षमा करें",
-        "please": "कृपया",
-        "help": "मदद",
-        "welcome": "स्वागत है",
-        "good morning": "सुप्रभात",
-        "good night": "शुभरात्रि",
-        "i don't understand": "मुझे समझ नहीं आया",
+    "en-ja": {
+        "hello": "こんにちは",
+        "hi": "こんにちは",
+        "how are you": "お元気ですか",
+        "thank you": "ありがとうございます",
+        "thanks": "ありがとうございます",
+        "goodbye": "さようなら",
+        "bye": "さようなら",
+        "yes": "はい",
+        "no": "いいえ",
+        "ok": "わかりました",
+        "okay": "わかりました",
+        "good": "良い",
+        "bad": "悪い",
+        "i am fine": "元気です",
+        "sorry": "すみません",
+        "please": "お願いします",
+        "help": "助けて",
+        "welcome": "ようこそ",
+        "good morning": "おはようございます",
+        "good night": "おやすみなさい",
+        "i don't understand": "わかりません",
     },
-    "hi-en": {
-        "नमस्ते": "hello",
-        "आप कैसे हैं": "how are you",
-        "धन्यवाद": "thank you",
-        "अलविदा": "goodbye",
-        "हाँ": "yes",
-        "नहीं": "no",
-        "ठीक है": "ok",
-        "अच्छा": "good",
-        "बुरा": "bad",
-        "मदद": "help",
-        "क्षमा करें": "sorry",
-        "कृपया": "please",
-        "सुप्रभात": "good morning",
-        "शुभरात्रि": "good night",
+    "ja-en": {
+        "こんにちは": "hello",
+        "お元気ですか": "how are you",
+        "ありがとうございます": "thank you",
+        "さようなら": "goodbye",
+        "はい": "yes",
+        "いいえ": "no",
+        "わかりました": "ok",
+        "良い": "good",
+        "悪い": "bad",
+        "助けて": "help",
+        "すみません": "sorry",
+        "お願いします": "please",
+        "おはようございます": "good morning",
+        "おやすみなさい": "good night",
+    },
+    "en-de": {
+        "hello": "hallo",
+        "hi": "hallo",
+        "how are you": "wie geht es dir",
+        "thank you": "danke",
+        "thanks": "danke",
+        "goodbye": "auf wiedersehen",
+        "bye": "tschuss",
+        "yes": "ja",
+        "no": "nein",
+        "ok": "ok",
+        "okay": "in ordnung",
+        "good": "gut",
+        "bad": "schlecht",
+        "i am fine": "mir geht es gut",
+        "sorry": "entschuldigung",
+        "please": "bitte",
+        "help": "hilfe",
+        "welcome": "willkommen",
+        "good morning": "guten morgen",
+        "good night": "gute nacht",
+        "i don't understand": "ich verstehe nicht",
+    },
+    "de-en": {
+        "hallo": "hello",
+        "wie geht es dir": "how are you",
+        "danke": "thank you",
+        "auf wiedersehen": "goodbye",
+        "tschuss": "bye",
+        "ja": "yes",
+        "nein": "no",
+        "in ordnung": "okay",
+        "gut": "good",
+        "schlecht": "bad",
+        "hilfe": "help",
+        "entschuldigung": "sorry",
+        "bitte": "please",
+        "guten morgen": "good morning",
+        "gute nacht": "good night",
     },
 }
 
 HAS_TLS = KEY_FILE.exists() and CERT_FILE.exists()
 SERVER_PROTOCOL = "https" if HAS_TLS else "http"
 
-app = FastAPI(title="BabelCam FastAPI Backend")
+app = FastAPI(title="AnyTalk FastAPI Backend")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -126,23 +169,6 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
-def contains_arabic_script(text: str) -> bool:
-    return any("\u0600" <= ch <= "\u06FF" or "\u0750" <= ch <= "\u077F" or "\u08A0" <= ch <= "\u08FF" for ch in text)
-
-
-def normalize_hindi_script(text: str) -> str:
-    if not text or not contains_arabic_script(text):
-        return text
-
-    try:
-        # If Whisper emitted Urdu-style script for a Hindi phrase, normalize it to Devanagari.
-        normalized = translate_text(text, "ur", "hi")
-        return normalized or text
-    except Exception as exc:
-        log(f"Hindi normalization failed: {exc}")
-        return text
-
-
 def transcribe_audio_file(audio_path: Path, lang_code: str) -> dict[str, str]:
     model = get_whisper_model()
     if not model:
@@ -157,12 +183,12 @@ def transcribe_audio_file(audio_path: Path, lang_code: str) -> dict[str, str]:
             str(audio_path),
             language=whisper_lang,
             beam_size=1,
+            best_of=1,
+            temperature=0,
             condition_on_previous_text=False,
+            vad_filter=True,
         )
         text = " ".join(segment.text for segment in segments).strip()
-
-        if lang_code.lower() == "hi":
-            text = normalize_hindi_script(text)
 
         return {
             "text": text,
@@ -177,10 +203,18 @@ def translate_text(text: str, source_lang: str | None, target_lang: str) -> str:
     if not text.strip():
         return ""
 
-    if source_lang and source_lang.lower() == target_lang.lower():
+    normalized_source = source_lang.lower() if source_lang else None
+    normalized_target = target_lang.lower()
+
+    if normalized_source and normalized_source == normalized_target:
         return text
 
-    pair = f"{(source_lang or 'auto').lower()}-{target_lang.lower()}"
+    if normalized_source:
+        pair_key = f"{normalized_source}-{normalized_target}"
+        if pair_key not in SUPPORTED_TRANSLATION_PAIRS:
+            raise ValueError(f"Unsupported translation pair: {pair_key}")
+
+    pair = f"{normalized_source or 'auto'}-{normalized_target}"
     local_match = SIMPLE_TRANSLATIONS.get(pair, {}).get(text.lower().strip())
     if local_match:
         return local_match
@@ -188,8 +222,8 @@ def translate_text(text: str, source_lang: str | None, target_lang: str) -> str:
     payload = json.dumps(
         {
             "q": text,
-            "source": source_lang or "auto",
-            "target": target_lang,
+            "source": normalized_source or "auto",
+            "target": normalized_target,
             "format": "text",
             **({"api_key": LIBRETRANSLATE_API_KEY} if LIBRETRANSLATE_API_KEY else {}),
         }
@@ -221,7 +255,7 @@ def translate_text(text: str, source_lang: str | None, target_lang: str) -> str:
         return libre_result
 
     try:
-        google_result = GoogleTranslator(source=source_lang or "auto", target=target_lang).translate(text)
+        google_result = GoogleTranslator(source=normalized_source or "auto", target=normalized_target).translate(text)
         if google_result and google_result.strip():
             return google_result
     except Exception:
@@ -301,6 +335,7 @@ async def transcribe_status() -> JSONResponse:
             "backend": "faster-whisper" if WHISPER_AVAILABLE else "none",
             "model": WHISPER_MODEL,
             "device": WHISPER_DEVICE,
+            "languages": sorted(WHISPER_LANG_MAP),
             "install": None if WHISPER_AVAILABLE else "pip install faster-whisper",
         }
     )
@@ -315,12 +350,21 @@ async def translate(payload: dict[str, Any]) -> JSONResponse:
     if not target_lang:
         raise HTTPException(status_code=400, detail="targetLang is required")
 
-    translated = await asyncio.to_thread(translate_text, text, source_lang, target_lang)
+    try:
+        translated = await asyncio.to_thread(translate_text, text, source_lang, target_lang)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse({"translatedText": translated})
 
 
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...), lang: str = Form(...)) -> JSONResponse:
+    if lang.lower() not in WHISPER_LANG_MAP:
+        return JSONResponse(
+            {"error": "Unsupported speech language. Use English, Japanese, or German.", "text": ""},
+            status_code=400,
+        )
+
     suffix = Path(audio.filename or "speech.webm").suffix or ".webm"
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     temp_path = Path(temp_file.name)
@@ -418,7 +462,7 @@ def create_server_args(reload: bool) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the BabelCam FastAPI server.")
+    parser = argparse.ArgumentParser(description="Run the AnyTalk FastAPI server.")
     parser.add_argument("--reload", action="store_true", help="Run the server with auto-reload.")
     args = parser.parse_args()
 

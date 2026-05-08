@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BabelCam — Live Video Translation</title>
+  <title>AnyTalk — Live Video Translation</title>
 
   <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
 
@@ -91,17 +91,23 @@
     #call-screen.active { display: flex; }
 
     .topbar {
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center; justify-content: flex-start; gap: 18px;
       padding: 12px 20px; border-bottom: 1px solid var(--border);
       background: var(--surface); flex-shrink: 0; z-index: 20;
     }
-    .topbar-brand { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; color: var(--accent); }
+    .topbar-brand { font-weight: 800; font-size: 22px; letter-spacing: -0.01em; color: var(--accent); }
     .topbar-center { display: flex; align-items: center; gap: 12px; }
     .room-chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
     .room-chip span { color: var(--accent); font-weight: 500; }
     .lang-select-small { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; outline: none; }
     .lang-select-small:focus { border-color: var(--accent); }
-    .topbar-actions { display: flex; gap: 8px; }
+    .topbar-actions { display: flex; gap: 8px; margin-left: auto; }
+    @media (max-width: 720px) {
+      .topbar { flex-wrap: wrap; gap: 10px 12px; }
+      .topbar-brand { order: 1; }
+      .topbar-center { order: 2; flex-basis: 100%; }
+      .topbar-actions { order: 3; margin-left: 0; }
+    }
 
     .icon-btn {
       background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
@@ -235,14 +241,6 @@
     .modal-actions .btn { flex: 1; }
     .btn-ghost { background: var(--surface2) !important; color: var(--text) !important; border: 1px solid var(--border) !important; box-shadow: none !important; }
 
-    /* Quick send panel */
-    #voice-commands-panel {
-      display: none; background: var(--surface); border-bottom: 1px solid var(--border);
-      padding: 10px 16px; flex-wrap: wrap; gap: 6px; align-items: center;
-    }
-    #voice-commands-panel span { font-size: 12px; color: var(--muted); margin-right: 4px; }
-    .qbtn { padding: 5px 12px !important; font-size: 12px !important; width: auto !important; }
-
     /* Whisper STT button */
     #stt-btn.recording { background: var(--red) !important; border-color: var(--red) !important; color: #fff !important; animation: stt-blink 1s ease-in-out infinite; }
     @keyframes stt-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
@@ -252,9 +250,9 @@
 
 <!-- LOBBY -->
 <div id="lobby">
-  <p class="logo">BabelCam</p>
-  <h1 class="hero-title">Speak in any<br>language. <span>Be understood.</span></h1>
-  <p class="hero-sub">Real-time peer-to-peer video with live Hindi ↔ English translation</p>
+  <p class="logo">AnyTalk</p>
+  <h1 class="hero-title">Speak clearly.<br><span>Be understood.</span></h1>
+  <p class="hero-sub">Real-time peer-to-peer video with live English, Japanese, and German translation</p>
 
   <div class="lobby-card">
     <div>
@@ -264,8 +262,10 @@
     <div>
       <label>Your Speaking Language</label>
       <select id="lang-select">
-        <option value="en">🇬🇧  English  →  subtitles in Hindi</option>
-        <option value="hi">🇮🇳  Hindi  →  subtitles in English</option>
+        <option value="en-ja">🇬🇧  English  →  subtitles in Japanese</option>
+        <option value="ja-en">🇯🇵  Japanese  →  subtitles in English</option>
+        <option value="en-de">🇬🇧  English  →  subtitles in German</option>
+        <option value="de-en">🇩🇪  German  →  subtitles in English</option>
       </select>
     </div>
     <button class="btn" id="join-btn" onclick="joinRoom()">Join / Create Room</button>
@@ -281,13 +281,15 @@
 <!-- CALL SCREEN -->
 <div id="call-screen">
   <div class="topbar">
-    <div class="topbar-brand">BabelCam</div>
+    <div class="topbar-brand">AnyTalk</div>
     <div class="topbar-center">
       <div class="room-chip">Room: <span id="room-display"></span></div>
       <button class="icon-btn" title="Copy invite link" onclick="copyInviteLink()">🔗</button>
       <select class="lang-select-small" id="call-lang-select" onchange="updateLang(this.value)">
-        <option value="en">EN → हि</option>
-        <option value="hi">हि → EN</option>
+        <option value="en-ja">EN → JA</option>
+        <option value="ja-en">JA → EN</option>
+        <option value="en-de">EN → DE</option>
+        <option value="de-en">DE → EN</option>
       </select>
     </div>
     <div class="topbar-actions">
@@ -302,19 +304,6 @@
 
   <!-- Whisper status bar -->
   <div id="stt-status-bar">Whisper STT ready — hold 🎙️ to speak</div>
-
-  <!-- Quick send panel -->
-  <div id="voice-commands-panel">
-    <span>Quick:</span>
-    <button class="btn qbtn" onclick="sendQuickPhrase('hello')">hello</button>
-    <button class="btn qbtn" onclick="sendQuickPhrase('thank you')">thank you</button>
-    <button class="btn qbtn" onclick="sendQuickPhrase('yes')">yes</button>
-    <button class="btn qbtn" onclick="sendQuickPhrase('no')">no</button>
-    <button class="btn qbtn" onclick="sendQuickPhrase('goodbye')">goodbye</button>
-    <button class="btn qbtn" onclick="sendQuickPhrase('good morning')">good morning</button>
-    <button class="btn qbtn" onclick="sendQuickPhrase('help')">help</button>
-    <button class="btn qbtn" onclick="sendQuickPhrase('sorry')">sorry</button>
-  </div>
 
   <!-- Video grid -->
   <div class="video-grid">
@@ -377,6 +366,7 @@
 let socket, peer, localStream;
 let currentRoom = null;
 let myLang = 'en';
+let targetLang = 'ja';
 let isInitiator = false;
 let micEnabled = true;
 let camEnabled = true;
@@ -391,23 +381,25 @@ let whisperReady = false;
 // Subtitle fade timers
 let localSubTimer, remoteSubTimer;
 
-// Quick phrase dictionary (offline fallback + fast path)
-const quickPhrases = {
-  'en-hi': {
-    'hello': 'नमस्ते', 'hi': 'नमस्ते', 'thank you': 'धन्यवाद',
-    'thanks': 'धन्यवाद', 'yes': 'हाँ', 'no': 'नहीं',
-    'okay': 'ठीक है', 'ok': 'ठीक है', 'goodbye': 'अलविदा',
-    'bye': 'अलविदा', 'good morning': 'सुप्रभात', 'good night': 'शुभरात्रि',
-    'how are you': 'आप कैसे हैं', 'help': 'मदद', 'sorry': 'क्षमा करें',
-    'please': 'कृपया', 'welcome': 'स्वागत है',
-  },
-  'hi-en': {
-    'नमस्ते': 'hello', 'धन्यवाद': 'thank you', 'हाँ': 'yes',
-    'नहीं': 'no', 'ठीक है': 'okay', 'अलविदा': 'goodbye',
-    'सुप्रभात': 'good morning', 'शुभरात्रि': 'good night',
-    'आप कैसे हैं': 'how are you', 'मदद': 'help', 'क्षमा करें': 'sorry',
-  }
+const languageNames = {
+  en: 'English',
+  ja: 'Japanese',
+  de: 'German',
 };
+
+function setLanguagePair(pair) {
+  const [source, target] = String(pair || 'en-ja').split('-');
+  const supportedPairs = ['en-ja', 'ja-en', 'en-de', 'de-en'];
+  const normalizedPair = supportedPairs.includes(`${source}-${target}`) ? `${source}-${target}` : 'en-ja';
+  [myLang, targetLang] = normalizedPair.split('-');
+  document.getElementById('lang-select').value = normalizedPair;
+  document.getElementById('call-lang-select').value = normalizedPair;
+  return normalizedPair;
+}
+
+function sttPrompt() {
+  return `Hold 🎙️ to speak — ${languageNames[myLang]} speech only`;
+}
 
 // ══════════════════════════════════════════════════════════════
 // UTILITY
@@ -448,10 +440,10 @@ async function checkTranscribeStatus() {
 
     if (whisperReady) {
       document.getElementById('speech-status').textContent = `Whisper ready (${status.backend})`;
-      setSttStatus('Whisper STT ready — hold 🎙️ to speak', '');
+      setSttStatus(sttPrompt(), '');
     } else {
       document.getElementById('speech-status').textContent = 'Whisper unavailable';
-      setSttStatus('Whisper is not installed on the server — use quick phrases or manual text.', 'error');
+      setSttStatus('Whisper is not installed on the server — use manual text.', 'error');
     }
   } catch (err) {
     whisperReady = false;
@@ -503,8 +495,7 @@ async function joinRoom() {
   const rawCode = document.getElementById('room-input').value.trim().toUpperCase();
   if (!rawCode) { toast('Please enter a room code', 'error'); return; }
 
-  myLang = document.getElementById('lang-select').value;
-  document.getElementById('call-lang-select').value = myLang;
+  setLanguagePair(document.getElementById('lang-select').value);
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     toast('❌ Your browser does not support camera/microphone access.', 'error'); return;
@@ -622,7 +613,7 @@ async function transcribeAndSend(audioBlob) {
       setSttStatus('⚠️ No speech detected — try again', 'error');
       document.getElementById('speech-status').textContent = 'Whisper ready';
       document.getElementById('speech-status').classList.remove('active');
-      setTimeout(() => setSttStatus('Hold 🎙️ to speak', ''), 2000);
+      setTimeout(() => setSttStatus(sttPrompt(), ''), 2000);
       return;
     }
 
@@ -635,7 +626,6 @@ async function transcribeAndSend(audioBlob) {
     }, 1000);
 
     // Translate and send to peer
-    const targetLang = myLang === 'en' ? 'hi' : 'en';
     setSttStatus('🔄 Translating…', 'processing');
 
     const translated = await translateText(text, myLang, targetLang);
@@ -654,39 +644,16 @@ async function transcribeAndSend(audioBlob) {
     setSttStatus(`✅ Sent: "${translated}"`, '');
     document.getElementById('speech-status').textContent = 'Whisper ready';
     document.getElementById('speech-status').classList.remove('active');
-    setTimeout(() => setSttStatus('Hold 🎙️ to speak', ''), 3000);
+    setTimeout(() => setSttStatus(sttPrompt(), ''), 3000);
 
   } catch(err) {
     console.error('Transcription error:', err);
     setSttStatus('❌ ' + err.message, 'error');
     document.getElementById('speech-status').textContent = 'Whisper ready';
     document.getElementById('speech-status').classList.remove('active');
-    setTimeout(() => setSttStatus('Hold 🎙️ to speak', ''), 4000);
+    setTimeout(() => setSttStatus(sttPrompt(), ''), 4000);
     toast('Transcription error: ' + err.message, 'error');
   }
-}
-
-// ══════════════════════════════════════════════════════════════
-// QUICK PHRASE SEND (offline dictionary, instant)
-// ══════════════════════════════════════════════════════════════
-function sendQuickPhrase(phrase) {
-  if (!peerConnected) { toast('⚠️ Wait for peer to connect', 'error'); return; }
-  const targetLang = myLang === 'en' ? 'hi' : 'en';
-  const pair = `${myLang}-${targetLang}`;
-  const translated = quickPhrases[pair] && quickPhrases[pair][phrase.toLowerCase()];
-
-  if (!translated) { toast('❌ Phrase not in dictionary', 'error'); return; }
-
-  showLocalSubtitle(phrase, translated, true);
-  sendSocketMessage({
-    type: 'subtitle',
-    roomCode: currentRoom,
-    sourceText: phrase,
-    text: translated,
-    isFinal: true,
-    lang: targetLang,
-  });
-  toast(`📤 "${translated}"`, 'success');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -735,11 +702,10 @@ function connectSocket(roomCode) {
         toast(message.initiator ? 'Peer joined! Starting call…' : 'Connected to room!', 'success');
         setConnStatus('Negotiating…', false);
         enableCallControls(true);
-        document.getElementById('voice-commands-panel').style.display = 'flex';
         setSttStatus(
           whisperReady
-            ? 'Hold 🎙️ to speak — Whisper will transcribe'
-            : 'Whisper unavailable — use manual text or quick phrases',
+            ? sttPrompt()
+            : 'Whisper unavailable — use manual text',
           whisperReady ? '' : 'error'
         );
         initWebRTC(message.initiator);
@@ -770,7 +736,6 @@ function connectSocket(roomCode) {
         if (peer) { peer.destroy(); peer = null; }
         document.getElementById('remote-video').style.display = 'none';
         document.getElementById('waiting-overlay').style.display = 'flex';
-        document.getElementById('voice-commands-panel').style.display = 'none';
         enableCallControls(false);
         setSttStatus('Waiting for peer to reconnect…', '');
         break;
@@ -822,7 +787,7 @@ function initWebRTC(initiator) {
     document.getElementById('waiting-overlay').style.display = 'none';
     setConnStatus('Connected', true);
     toast('Video connected! 🎉', 'success');
-    setSttStatus('Hold 🎙️ to speak — Whisper will transcribe', '');
+    setSttStatus(sttPrompt(), '');
   });
 
   peer.on('error', (err) => {
@@ -853,8 +818,9 @@ function toggleCam() {
 }
 
 function updateLang(newLang) {
-  myLang = newLang;
-  toast(`Language switched to ${newLang === 'en' ? 'English' : 'Hindi'}`);
+  setLanguagePair(newLang);
+  if (whisperReady) setSttStatus(sttPrompt(), '');
+  toast(`Language switched to ${languageNames[myLang]} → ${languageNames[targetLang]}`);
 }
 
 function leaveCall() {
@@ -880,7 +846,6 @@ function leaveCall() {
   document.getElementById('remote-subtitle-translation').textContent = '';
   document.getElementById('remote-video').style.display  = 'none';
   document.getElementById('waiting-overlay').style.display = 'flex';
-  document.getElementById('voice-commands-panel').style.display = 'none';
   document.getElementById('stt-status-bar').className = '';
   enableCallControls(false);
 }
@@ -909,8 +874,6 @@ async function sendManualText() {
   const text = document.getElementById('manual-text-input').value.trim();
   if (!text) { toast('Please enter text', 'error'); return; }
   if (!peerConnected) { toast('❌ Not connected to peer', 'error'); return; }
-
-  const targetLang = myLang === 'en' ? 'hi' : 'en';
 
   try {
     const translated = await translateText(text, myLang, targetLang);
