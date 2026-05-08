@@ -1,0 +1,16 @@
+{
+  "name": "live-video-translation",
+  "version": "1.0.0",
+  "description": "Real-time peer-to-peer video call with live Hindi/English translation subtitles",
+  "main": "app/main.py",
+  "scripts": {
+    "start": "python -m app.main",
+    "dev": "python -m app.main --reload",
+    "generate-certs": "node scripts/generate-certs.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "selfsigned": "^5.5.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BabelCam — Live Video Translation</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg:        #0A0B0F;
+      --surface:   #12141A;
+      --surface2:  #1C1F28;
+      --border:    #2A2D38;
+      --accent:    #F5A623;
+      --accent-dim:#7A5310;
+      --green:     #2ECC71;
+      --red:       #E74C3C;
+      --text:      #E8EAF0;
+      --muted:     #6B7080;
+      --font-ui:   'Syne', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --radius:    12px;
+      --glow:      0 0 24px rgba(245,166,35,0.18);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-ui); overflow: hidden; }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(245,166,35,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245,166,35,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none; z-index: 0;
+    }
+
+    /* LOBBY */
+    #lobby {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0; z-index: 10;
+    }
+    .logo { font-size: 13px; font-weight: 700; letter-spacing: 0.35em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+    .hero-title { font-size: clamp(36px, 6vw, 72px); font-weight: 800; line-height: 1; text-align: center; letter-spacing: -0.02em; margin-bottom: 10px; }
+    .hero-title span { color: var(--accent); }
+    .hero-sub { font-size: 14px; color: var(--muted); text-align: center; letter-spacing: 0.06em; margin-bottom: 48px; }
+
+    .lobby-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 36px 40px; width: min(420px, 92vw);
+      display: flex; flex-direction: column; gap: 20px;
+      box-shadow: 0 0 60px rgba(0,0,0,0.6), var(--glow);
+    }
+
+    label { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 8px; }
+    input[type="text"], select {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: var(--font-mono); font-size: 15px; padding: 12px 16px;
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s; -webkit-appearance: none;
+    }
+    input[type="text"]:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,166,35,0.12); }
+    select option { background: var(--surface2); }
+
+    .btn {
+      width: 100%; background: var(--accent); color: #0A0B0F; border: none; border-radius: 8px;
+      font-family: var(--font-ui); font-size: 14px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 14px; cursor: pointer;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 20px rgba(245,166,35,0.25);
+    }
+    .btn:hover  { background: #ffbe45; box-shadow: 0 6px 28px rgba(245,166,35,0.4); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { background: var(--accent-dim); color: #555; cursor: not-allowed; box-shadow: none; }
+
+    .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 11px; letter-spacing: 0.1em; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    #lobby-status { font-size: 13px; text-align: center; color: var(--muted); min-height: 18px; }
+
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    /* CALL SCREEN */
+    #call-screen { display: none; position: fixed; inset: 0; flex-direction: column; background: var(--bg); z-index: 5; }
+    #call-screen.active { display: flex; }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px; border-bottom: 1px solid var(--border);
+      background: var(--surface); flex-shrink: 0; z-index: 20;
+    }
+    .topbar-brand { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; color: var(--accent); }
+    .topbar-center { display: flex; align-items: center; gap: 12px; }
+    .room-chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+    .room-chip span { color: var(--accent); font-weight: 500; }
+    .lang-select-small { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; outline: none; }
+    .lang-select-small:focus { border-color: var(--accent); }
+    .topbar-actions { display: flex; gap: 8px; }
+
+    .icon-btn {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); width: 36px; height: 36px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .icon-btn:hover { background: var(--border); }
+    .icon-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+    .icon-btn.danger { border-color: var(--red); }
+    .icon-btn.danger:hover { background: var(--red); color: #fff; }
+
+    /* STT status bar */
+    #stt-status-bar {
+      display: none;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--muted);
+      text-align: center;
+      flex-shrink: 0;
+    }
+    #stt-status-bar.active { display: block; color: var(--accent); }
+    #stt-status-bar.recording { color: var(--green); }
+    #stt-status-bar.processing { color: #F5A623; }
+    #stt-status-bar.error { color: var(--red); }
+
+    /* Video */
+    .video-grid {
+      flex: 1; display: grid; grid-template-columns: 1fr 1fr;
+      gap: 2px; background: #000; overflow: hidden;
+    }
+    @media (max-width: 640px) { .video-grid { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
+
+    .video-tile { position: relative; background: var(--surface); overflow: hidden; }
+    video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .tile-label {
+      position: absolute; top: 12px; left: 12px;
+      background: rgba(10,11,15,0.7); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+      padding: 4px 10px; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+    }
+
+    /* Recording indicator on local tile */
+    .rec-indicator {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(10,11,15,0.7); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; padding: 4px 10px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--red); display: none; align-items: center; gap: 6px;
+    }
+    .rec-indicator.visible { display: flex; }
+    .rec-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: pulse 0.8s ease-in-out infinite; }
+
+    .mic-indicator {
+      position: absolute; top: 12px; right: 12px;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(10,11,15,0.7); border: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; justify-content: center; font-size: 13px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .mic-indicator.speaking { opacity: 1; background: rgba(245,166,35,0.25); border-color: var(--accent); animation: mic-pulse 0.8s ease-in-out infinite alternate; }
+    @keyframes mic-pulse { from { box-shadow: 0 0 0 0 rgba(245,166,35,0); } to { box-shadow: 0 0 0 6px rgba(245,166,35,0.2); } }
+
+    .subtitle-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 16px 20px 20px;
+      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+      min-height: 72px; display: flex; flex-direction: column; gap: 4px; justify-content: flex-end; z-index: 3;
+    }
+    .subtitle-original,
+    .subtitle-translation {
+      font-family: var(--font-ui); font-size: clamp(13px, 1.45vw, 16px); font-weight: 500; line-height: 1.4; max-width: 92%; overflow-wrap: anywhere; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    }
+    .subtitle-original { color: #fff; }
+    .subtitle-translation { color: rgba(245, 166, 35, 0.95); font-size: clamp(12px, 1.2vw, 14px); }
+    .subtitle-original.interim,
+    .subtitle-translation.interim { opacity: 0.8; font-style: italic; }
+
+    .waiting-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--surface); z-index: 1; }
+    .waiting-overlay .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .waiting-overlay p { font-size: 13px; color: var(--muted); letter-spacing: 0.05em; }
+
+    .bottombar {
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 10px 20px; display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0;
+    }
+    .status-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    #speech-status { font-size: 12px; font-family: var(--font-mono); color: var(--muted); }
+    #speech-status.active { color: var(--accent); }
+    .transcript-live { flex: 1; text-align: center; font-size: 12px; font-family: var(--font-mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 20px; }
+
+    #toast {
+      position: fixed; top: 20px; left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 20px; font-size: 13px; color: var(--text);
+      z-index: 100; transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.error { border-color: var(--red); color: var(--red); }
+    #toast.success { border-color: var(--green); color: var(--green); }
+
+    /* Manual text input modal */
+    #text-input-modal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.8); z-index: 200;
+      align-items: center; justify-content: center;
+    }
+    #text-input-modal.open { display: flex; }
+    .modal-inner {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 20px; width: min(400px,90vw); box-shadow: 0 0 40px rgba(0,0,0,0.9);
+    }
+    .modal-inner h3 { color: var(--accent); margin-bottom: 12px; }
+    .modal-inner p  { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+    .modal-inner textarea {
+      width: 100%; height: 80px; background: var(--surface2);
+      border: 1px solid var(--border); color: var(--text);
+      padding: 10px; border-radius: 6px; font-family: var(--font-ui);
+      resize: none; outline: none;
+    }
+    .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .modal-actions .btn { flex: 1; }
+    .btn-ghost { background: var(--surface2) !important; color: var(--text) !important; border: 1px solid var(--border) !important; box-shadow: none !important; }
+
+    /* Quick send panel */
+    #voice-commands-panel {
+      display: none; background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 10px 16px; flex-wrap: wrap; gap: 6px; align-items: center;
+    }
+    #voice-commands-panel span { font-size: 12px; color: var(--muted); margin-right: 4px; }
+    .qbtn { padding: 5px 12px !important; font-size: 12px !important; width: auto !important; }
+
+    /* Whisper STT button */
+    #stt-btn.recording { background: var(--red) !important; border-color: var(--red) !important; color: #fff !important; animation: stt-blink 1s ease-in-out infinite; }
+    @keyframes stt-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+  </style>
+</head>
+<body>
+
+<!-- LOBBY -->
+<div id="lobby">
+  <p class="logo">BabelCam</p>
+  <h1 class="hero-title">Speak in any<br>language. <span>Be understood.</span></h1>
+  <p class="hero-sub">Real-time peer-to-peer video with live Hindi ↔ English translation</p>
+
+  <div class="lobby-card">
+    <div>
+      <label>Room Code</label>
+      <input type="text" id="room-input" placeholder="e.g. MANGO-42" maxlength="20" autocomplete="off" />
+    </div>
+    <div>
+      <label>Your Speaking Language</label>
+      <select id="lang-select">
+        <option value="en">🇬🇧  English  →  subtitles in Hindi</option>
+        <option value="hi">🇮🇳  Hindi  →  subtitles in English</option>
+      </select>
+    </div>
+    <button class="btn" id="join-btn" onclick="joinRoom()">Join / Create Room</button>
+    <div class="divider">or generate a code</div>
+    <button class="btn btn-ghost" onclick="generateCode()">🎲 Random Room Code</button>
+    <div id="lobby-status"></div>
+    <div style="padding:10px;background:var(--surface2);border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--muted);">
+      <strong style="color:var(--accent);">🎙️ Speech:</strong> Uses Whisper AI (free, local) — no Google API required. Camera &amp; mic access needed.
+    </div>
+  </div>
+</div>
+
+<!-- CALL SCREEN -->
+<div id="call-screen">
+  <div class="topbar">
+    <div class="topbar-brand">BabelCam</div>
+    <div class="topbar-center">
+      <div class="room-chip">Room: <span id="room-display"></span></div>
+      <button class="icon-btn" title="Copy invite link" onclick="copyInviteLink()">🔗</button>
+      <select class="lang-select-small" id="call-lang-select" onchange="updateLang(this.value)">
+        <option value="en">EN → हि</option>
+        <option value="hi">हि → EN</option>
+      </select>
+    </div>
+    <div class="topbar-actions">
+      <!-- Push-to-talk: hold to record, release to transcribe -->
+      <button class="icon-btn" id="stt-btn" title="Hold to speak (Whisper STT)" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording(event)" ontouchend="stopRecording(event)" disabled>🎙️</button>
+      <button class="icon-btn" id="mic-btn" title="Toggle Microphone" onclick="toggleMic()">🎤</button>
+      <button class="icon-btn" id="cam-btn" title="Toggle Camera" onclick="toggleCam()">📷</button>
+      <button class="icon-btn" id="text-btn" title="Manual Text Input" onclick="toggleTextInput()" disabled style="opacity:0.5;">📝</button>
+      <button class="icon-btn danger" title="Leave Call" onclick="leaveCall()">📵</button>
+    </div>
+  </div>
+
+  <!-- Whisper status bar -->
+  <div id="stt-status-bar">Whisper STT ready — hold 🎙️ to speak</div>
+
+  <!-- Quick send panel -->
+  <div id="voice-commands-panel">
+    <span>Quick:</span>
+    <button class="btn qbtn" onclick="sendQuickPhrase('hello')">hello</button>
+    <button class="btn qbtn" onclick="sendQuickPhrase('thank you')">thank you</button>
+    <button class="btn qbtn" onclick="sendQuickPhrase('yes')">yes</button>
+    <button class="btn qbtn" onclick="sendQuickPhrase('no')">no</button>
+    <button class="btn qbtn" onclick="sendQuickPhrase('goodbye')">goodbye</button>
+    <button class="btn qbtn" onclick="sendQuickPhrase('good morning')">good morning</button>
+    <button class="btn qbtn" onclick="sendQuickPhrase('help')">help</button>
+    <button class="btn qbtn" onclick="sendQuickPhrase('sorry')">sorry</button>
+  </div>
+
+  <!-- Video grid -->
+  <div class="video-grid">
+    <div class="video-tile" id="local-tile">
+      <video id="local-video" autoplay muted playsinline></video>
+      <div class="tile-label">You</div>
+      <div class="rec-indicator" id="rec-indicator"><div class="rec-dot"></div>REC</div>
+      <div class="subtitle-overlay">
+        <div class="subtitle-original" id="local-subtitle-original"></div>
+        <div class="subtitle-translation" id="local-subtitle-translation"></div>
+      </div>
+    </div>
+
+    <div class="video-tile" id="remote-tile">
+      <div class="waiting-overlay" id="waiting-overlay">
+        <div class="spinner"></div>
+        <p>Waiting for peer to join…</p>
+      </div>
+      <video id="remote-video" autoplay playsinline style="display:none;"></video>
+      <div class="tile-label">Peer</div>
+      <div class="mic-indicator" id="remote-mic-indicator">🎙️</div>
+      <div class="subtitle-overlay">
+        <div class="subtitle-original" id="remote-subtitle-original"></div>
+        <div class="subtitle-translation" id="remote-subtitle-translation"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div class="status-row">
+      <div class="dot" id="conn-dot" style="background:var(--muted);box-shadow:none;animation:none;"></div>
+      <span id="conn-status">Connecting…</span>
+    </div>
+    <div class="transcript-live" id="transcript-live"></div>
+    <span id="speech-status">Whisper ready</span>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Manual Text Input Modal -->
+<div id="text-input-modal">
+  <div class="modal-inner">
+    <h3>📝 Manual Text Input</h3>
+    <p>Type your message — it will be translated and sent to your peer.</p>
+    <textarea id="manual-text-input" placeholder="Type your message here…" onkeydown="if(event.key==='Enter'&&event.ctrlKey)sendManualText()"></textarea>
+    <div style="color:var(--muted);font-size:11px;margin-top:6px;">Ctrl+Enter to send</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="sendManualText()">Send</button>
+      <button class="btn btn-ghost" onclick="closeTextInput()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+let socket, peer, localStream;
+let currentRoom = null;
+let myLang = 'en';
+let isInitiator = false;
+let micEnabled = true;
+let camEnabled = true;
+let peerConnected = false;
+
+// Whisper STT state
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let whisperReady = false;
+
+// Subtitle fade timers
+let localSubTimer, remoteSubTimer;
+
+// Quick phrase dictionary (offline fallback + fast path)
+const quickPhrases = {
+  'en-hi': {
+    'hello': 'नमस्ते', 'hi': 'नमस्ते', 'thank you': 'धन्यवाद',
+    'thanks': 'धन्यवाद', 'yes': 'हाँ', 'no': 'नहीं',
+    'okay': 'ठीक है', 'ok': 'ठीक है', 'goodbye': 'अलविदा',
+    'bye': 'अलविदा', 'good morning': 'सुप्रभात', 'good night': 'शुभरात्रि',
+    'how are you': 'आप कैसे हैं', 'help': 'मदद', 'sorry': 'क्षमा करें',
+    'please': 'कृपया', 'welcome': 'स्वागत है',
+  },
+  'hi-en': {
+    'नमस्ते': 'hello', 'धन्यवाद': 'thank you', 'हाँ': 'yes',
+    'नहीं': 'no', 'ठीक है': 'okay', 'अलविदा': 'goodbye',
+    'सुप्रभात': 'good morning', 'शुभरात्रि': 'good night',
+    'आप कैसे हैं': 'how are you', 'मदद': 'help', 'क्षमा करें': 'sorry',
+  }
+};
+
+// ══════════════════════════════════════════════════════════════
+// UTILITY
+// ══════════════════════════════════════════════════════════════
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  setTimeout(() => { el.className = ''; }, 3500);
+}
+
+function setSttStatus(msg, cls = '') {
+  const bar = document.getElementById('stt-status-bar');
+  bar.textContent = msg;
+  bar.className = cls ? `active ${cls}` : 'active';
+}
+
+function setConnStatus(text, connected) {
+  document.getElementById('conn-status').textContent = text;
+  const dot = document.getElementById('conn-dot');
+  dot.style.background  = connected ? 'var(--green)' : 'var(--muted)';
+  dot.style.boxShadow   = connected ? '0 0 8px var(--green)' : 'none';
+  dot.style.animation   = connected ? 'pulse 1.8s ease-in-out infinite' : 'none';
+}
+
+function sendSocketMessage(message) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    throw new Error('Realtime connection is not ready yet');
+  }
+  socket.send(JSON.stringify(message));
+}
+
+async function checkTranscribeStatus() {
+  try {
+    const res = await fetch('/transcribe/status');
+    const status = await res.json();
+    whisperReady = !!status.available;
+
+    if (whisperReady) {
+      document.getElementById('speech-status').textContent = `Whisper ready (${status.backend})`;
+      setSttStatus('Whisper STT ready — hold 🎙️ to speak', '');
+    } else {
+      document.getElementById('speech-status').textContent = 'Whisper unavailable';
+      setSttStatus('Whisper is not installed on the server — use quick phrases or manual text.', 'error');
+    }
+  } catch (err) {
+    whisperReady = false;
+    document.getElementById('speech-status').textContent = 'Whisper unavailable';
+    setSttStatus('Could not reach the STT status endpoint.', 'error');
+  }
+}
+
+function showLocalSubtitle(original, translation = '', isFinal) {
+  const originalEl = document.getElementById('local-subtitle-original');
+  const translationEl = document.getElementById('local-subtitle-translation');
+  originalEl.textContent = original;
+  translationEl.textContent = translation;
+  originalEl.className = 'subtitle-original' + (isFinal ? '' : ' interim');
+  translationEl.className = 'subtitle-translation' + (isFinal ? '' : ' interim');
+  document.getElementById('transcript-live').textContent = original;
+  clearTimeout(localSubTimer);
+  if (isFinal) localSubTimer = setTimeout(() => {
+    originalEl.textContent = '';
+    translationEl.textContent = '';
+  }, 4500);
+}
+
+function showRemoteSubtitle(original, translation = '', isFinal) {
+  const originalEl = document.getElementById('remote-subtitle-original');
+  const translationEl = document.getElementById('remote-subtitle-translation');
+  originalEl.textContent = original;
+  translationEl.textContent = translation;
+  originalEl.className = 'subtitle-original' + (isFinal ? '' : ' interim');
+  translationEl.className = 'subtitle-translation' + (isFinal ? '' : ' interim');
+  document.getElementById('transcript-live').textContent = original ? `Peer: ${original}` : '';
+  clearTimeout(remoteSubTimer);
+  if (isFinal) remoteSubTimer = setTimeout(() => {
+    originalEl.textContent = '';
+    translationEl.textContent = '';
+    document.getElementById('transcript-live').textContent = '';
+  }, 5500);
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOBBY
+// ══════════════════════════════════════════════════════════════
+function generateCode() {
+  const w = ['MANGO','TIGER','LOTUS','RIVER','FLAME','CLOUD','STORM','CHESS','DELTA','PRISM'];
+  document.getElementById('room-input').value = w[Math.floor(Math.random()*w.length)] + '-' + Math.floor(10 + Math.random()*90);
+}
+
+async function joinRoom() {
+  const rawCode = document.getElementById('room-input').value.trim().toUpperCase();
+  if (!rawCode) { toast('Please enter a room code', 'error'); return; }
+
+  myLang = document.getElementById('lang-select').value;
+  document.getElementById('call-lang-select').value = myLang;
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('❌ Your browser does not support camera/microphone access.', 'error'); return;
+  }
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  } catch(e) {
+    if      (e.name === 'NotAllowedError')   toast('❌ Permission Denied. Allow camera & mic access.', 'error');
+    else if (e.name === 'NotFoundError')     toast('❌ No camera/microphone found.', 'error');
+    else if (e.name === 'NotReadableError')  toast('❌ Camera/mic in use by another app.', 'error');
+    else                                     toast(`❌ ${e.message}`, 'error');
+    return;
+  }
+
+  document.getElementById('local-video').srcObject = localStream;
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('call-screen').classList.add('active');
+  document.getElementById('room-display').textContent = rawCode;
+  document.getElementById('stt-status-bar').classList.add('active');
+
+  currentRoom = rawCode;
+  connectSocket(rawCode);
+}
+
+// ══════════════════════════════════════════════════════════════
+// WHISPER STT — Push-to-Talk
+// Records audio → sends WAV blob to /transcribe → returns text
+// ══════════════════════════════════════════════════════════════
+
+// Detect best supported audio format
+function getBestMimeType() {
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+  ];
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
+function startRecording(e) {
+  if (e) e.preventDefault();
+  if (!peerConnected) { toast('⚠️ Wait for peer to connect first', 'error'); return; }
+  if (isRecording) return;
+  if (!micEnabled) { toast('🔇 Microphone is muted', 'error'); return; }
+
+  isRecording = true;
+  audioChunks = [];
+
+  // Use only the audio track from the localStream
+  const audioStream = new MediaStream(localStream.getAudioTracks());
+  const mimeType = getBestMimeType();
+
+  try {
+    mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : {});
+  } catch(e) {
+    mediaRecorder = new MediaRecorder(audioStream);
+  }
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = async () => {
+    if (audioChunks.length === 0) return;
+    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    await transcribeAndSend(blob);
+  };
+
+  mediaRecorder.start(250); // collect in 250ms chunks
+
+  // UI
+  document.getElementById('stt-btn').classList.add('recording');
+  document.getElementById('rec-indicator').classList.add('visible');
+  setSttStatus('🔴 Recording… release to transcribe', 'recording');
+  document.getElementById('speech-status').textContent = '● Recording';
+  document.getElementById('speech-status').classList.add('active');
+}
+
+function stopRecording(e) {
+  if (e) e.preventDefault();
+  if (!isRecording || !mediaRecorder) return;
+  isRecording = false;
+
+  mediaRecorder.stop();
+
+  // UI
+  document.getElementById('stt-btn').classList.remove('recording');
+  document.getElementById('rec-indicator').classList.remove('visible');
+  setSttStatus('⏳ Transcribing with Whisper…', 'processing');
+  document.getElementById('speech-status').textContent = '⏳ Processing…';
+}
+
+async function transcribeAndSend(audioBlob) {
+  try {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'speech.webm');
+    formData.append('lang', myLang);  // tells server which Whisper language to use
+
+    const res = await fetch('/transcribe', { method: 'POST', body: formData });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Transcription failed (${res.status}): ${err}`);
+    }
+
+    const data = await res.json();
+    const text = (data.text || '').trim();
+
+    if (!text) {
+      setSttStatus('⚠️ No speech detected — try again', 'error');
+      document.getElementById('speech-status').textContent = 'Whisper ready';
+      document.getElementById('speech-status').classList.remove('active');
+      setTimeout(() => setSttStatus('Hold 🎙️ to speak', ''), 2000);
+      return;
+    }
+
+    console.log('✅ Whisper transcript:', text);
+
+    document.getElementById('local-mic-indicator') && document.getElementById('local-mic-indicator').classList.add('speaking');
+    setTimeout(() => {
+      const el = document.getElementById('local-mic-indicator');
+      if (el) el.classList.remove('speaking');
+    }, 1000);
+
+    // Translate and send to peer
+    const targetLang = myLang === 'en' ? 'hi' : 'en';
+    setSttStatus('🔄 Translating…', 'processing');
+
+    const translated = await translateText(text, myLang, targetLang);
+
+    showLocalSubtitle(text, translated, true);
+
+    sendSocketMessage({
+      type: 'subtitle',
+      roomCode: currentRoom,
+      sourceText: text,
+      text: translated,
+      isFinal: true,
+      lang: targetLang,
+    });
+
+    setSttStatus(`✅ Sent: "${translated}"`, '');
+    document.getElementById('speech-status').textContent = 'Whisper ready';
+    document.getElementById('speech-status').classList.remove('active');
+    setTimeout(() => setSttStatus('Hold 🎙️ to speak', ''), 3000);
+
+  } catch(err) {
+    console.error('Transcription error:', err);
+    setSttStatus('❌ ' + err.message, 'error');
+    document.getElementById('speech-status').textContent = 'Whisper ready';
+    document.getElementById('speech-status').classList.remove('active');
+    setTimeout(() => setSttStatus('Hold 🎙️ to speak', ''), 4000);
+    toast('Transcription error: ' + err.message, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// QUICK PHRASE SEND (offline dictionary, instant)
+// ══════════════════════════════════════════════════════════════
+function sendQuickPhrase(phrase) {
+  if (!peerConnected) { toast('⚠️ Wait for peer to connect', 'error'); return; }
+  const targetLang = myLang === 'en' ? 'hi' : 'en';
+  const pair = `${myLang}-${targetLang}`;
+  const translated = quickPhrases[pair] && quickPhrases[pair][phrase.toLowerCase()];
+
+  if (!translated) { toast('❌ Phrase not in dictionary', 'error'); return; }
+
+  showLocalSubtitle(phrase, translated, true);
+  sendSocketMessage({
+    type: 'subtitle',
+    roomCode: currentRoom,
+    sourceText: phrase,
+    text: translated,
+    isFinal: true,
+    lang: targetLang,
+  });
+  toast(`📤 "${translated}"`, 'success');
+}
+
+// ══════════════════════════════════════════════════════════════
+// TRANSLATION (server-side via LibreTranslate)
+// ══════════════════════════════════════════════════════════════
+async function translateText(text, sourceLang, targetLang) {
+  const res = await fetch('/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, sourceLang, targetLang }),
+  });
+  if (!res.ok) throw new Error(`Translation API error (${res.status})`);
+  const data = await res.json();
+  if (!data.translatedText) throw new Error('No translation returned');
+  return data.translatedText;
+}
+
+// ══════════════════════════════════════════════════════════════
+// WebSocket signaling
+// ══════════════════════════════════════════════════════════════
+function connectSocket(roomCode) {
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  socket = new WebSocket(`${wsProtocol}://${window.location.host}/ws`);
+
+  socket.addEventListener('open', () => {
+    console.log('✅ WebSocket connected');
+    document.getElementById('conn-dot').style.background = 'var(--green)';
+    sendSocketMessage({ type: 'join-room', roomCode });
+  });
+
+  socket.addEventListener('close', () => {
+    document.getElementById('conn-dot').style.background = 'var(--muted)';
+    if (currentRoom) setConnStatus('Disconnected', false);
+  });
+
+  socket.addEventListener('message', (event) => {
+    const message = JSON.parse(event.data);
+
+    switch (message.type) {
+      case 'connected':
+        console.log('✅ WebSocket client id:', message.clientId);
+        break;
+      case 'peer-joined':
+        isInitiator = message.initiator;
+        peerConnected = true;
+        toast(message.initiator ? 'Peer joined! Starting call…' : 'Connected to room!', 'success');
+        setConnStatus('Negotiating…', false);
+        enableCallControls(true);
+        document.getElementById('voice-commands-panel').style.display = 'flex';
+        setSttStatus(
+          whisperReady
+            ? 'Hold 🎙️ to speak — Whisper will transcribe'
+            : 'Whisper unavailable — use manual text or quick phrases',
+          whisperReady ? '' : 'error'
+        );
+        initWebRTC(message.initiator);
+        break;
+      case 'waiting-for-peer':
+        toast('Room created — share the code!');
+        setConnStatus('Waiting for peer…', false);
+        break;
+      case 'room-full':
+        toast('Room is full (max 2 people)', 'error');
+        leaveCall();
+        break;
+      case 'signal':
+        if (peer) peer.signal(message.data);
+        break;
+      case 'subtitle':
+        console.log('📨 Subtitle from peer:', message);
+        showRemoteSubtitle(message.sourceText || message.text, message.text || '', message.isFinal);
+        const indicator = document.getElementById('remote-mic-indicator');
+        indicator.classList.add('speaking');
+        document.getElementById('waiting-overlay').style.display = 'none';
+        if (message.isFinal) setTimeout(() => indicator.classList.remove('speaking'), 800);
+        break;
+      case 'peer-disconnected':
+        peerConnected = false;
+        toast('Your peer left the call.', 'error');
+        setConnStatus('Peer disconnected', false);
+        if (peer) { peer.destroy(); peer = null; }
+        document.getElementById('remote-video').style.display = 'none';
+        document.getElementById('waiting-overlay').style.display = 'flex';
+        document.getElementById('voice-commands-panel').style.display = 'none';
+        enableCallControls(false);
+        setSttStatus('Waiting for peer to reconnect…', '');
+        break;
+      case 'error':
+        console.error('WebSocket error:', message.message);
+        toast(message.message || 'Realtime connection error', 'error');
+        break;
+      default:
+        console.warn('Unknown websocket message:', message);
+    }
+  });
+}
+
+function enableCallControls(enabled) {
+  const sttBtn  = document.getElementById('stt-btn');
+  const textBtn = document.getElementById('text-btn');
+  sttBtn.disabled = !enabled || !whisperReady;
+  sttBtn.style.opacity = sttBtn.disabled ? '0.5' : '1';
+  sttBtn.style.cursor = sttBtn.disabled ? 'not-allowed' : 'pointer';
+  [textBtn].forEach(btn => {
+    btn.disabled = !enabled;
+    btn.style.opacity = enabled ? '1' : '0.5';
+    btn.style.cursor  = enabled ? 'pointer' : 'not-allowed';
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// WebRTC
+// ══════════════════════════════════════════════════════════════
+function initWebRTC(initiator) {
+  peer = new SimplePeer({
+    initiator,
+    stream: localStream,
+    trickle: true,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
+    }
+  });
+
+  peer.on('signal', (data) => { sendSocketMessage({ type: 'signal', roomCode: currentRoom, data }); });
+
+  peer.on('stream', (remoteStream) => {
+    const vid = document.getElementById('remote-video');
+    vid.srcObject = remoteStream;
+    vid.style.display = 'block';
+    document.getElementById('waiting-overlay').style.display = 'none';
+    setConnStatus('Connected', true);
+    toast('Video connected! 🎉', 'success');
+    setSttStatus('Hold 🎙️ to speak — Whisper will transcribe', '');
+  });
+
+  peer.on('error', (err) => {
+    console.error('WebRTC error:', err);
+    toast('Connection error. Try refreshing.', 'error');
+  });
+
+  peer.on('close', () => setConnStatus('Disconnected', false));
+}
+
+// ══════════════════════════════════════════════════════════════
+// CALL CONTROLS
+// ══════════════════════════════════════════════════════════════
+function toggleMic() {
+  micEnabled = !micEnabled;
+  localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
+  document.getElementById('mic-btn').classList.toggle('active', !micEnabled);
+  document.getElementById('mic-btn').textContent = micEnabled ? '🎤' : '🔇';
+  toast(micEnabled ? 'Microphone on' : 'Microphone muted');
+}
+
+function toggleCam() {
+  camEnabled = !camEnabled;
+  localStream.getVideoTracks().forEach(t => t.enabled = camEnabled);
+  document.getElementById('cam-btn').classList.toggle('active', !camEnabled);
+  document.getElementById('cam-btn').textContent = camEnabled ? '📷' : '🚫';
+  toast(camEnabled ? 'Camera on' : 'Camera off');
+}
+
+function updateLang(newLang) {
+  myLang = newLang;
+  toast(`Language switched to ${newLang === 'en' ? 'English' : 'Hindi'}`);
+}
+
+function leaveCall() {
+  if (isRecording && mediaRecorder) { try { mediaRecorder.stop(); } catch(e){} }
+  if (peer)        peer.destroy();
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (socket)      socket.close();
+
+  peerConnected = false;
+  isRecording = false;
+  isInitiator = false;
+  currentRoom = null;
+  peer = null;
+  socket = null;
+  localStream = null;
+
+  document.getElementById('call-screen').classList.remove('active');
+  document.getElementById('lobby').style.display = 'flex';
+  document.getElementById('room-input').value = '';
+  document.getElementById('local-subtitle-original').textContent = '';
+  document.getElementById('local-subtitle-translation').textContent = '';
+  document.getElementById('remote-subtitle-original').textContent = '';
+  document.getElementById('remote-subtitle-translation').textContent = '';
+  document.getElementById('remote-video').style.display  = 'none';
+  document.getElementById('waiting-overlay').style.display = 'flex';
+  document.getElementById('voice-commands-panel').style.display = 'none';
+  document.getElementById('stt-status-bar').className = '';
+  enableCallControls(false);
+}
+
+// ══════════════════════════════════════════════════════════════
+// MANUAL TEXT INPUT
+// ══════════════════════════════════════════════════════════════
+function toggleTextInput() {
+  if (!peerConnected) { toast('❌ Join a call first!', 'error'); return; }
+  const modal = document.getElementById('text-input-modal');
+  const isOpen = modal.classList.contains('open');
+  if (isOpen) closeTextInput();
+  else {
+    modal.classList.add('open');
+    document.getElementById('text-btn').classList.add('active');
+    document.getElementById('manual-text-input').focus();
+  }
+}
+
+function closeTextInput() {
+  document.getElementById('text-input-modal').classList.remove('open');
+  document.getElementById('text-btn').classList.remove('active');
+}
+
+async function sendManualText() {
+  const text = document.getElementById('manual-text-input').value.trim();
+  if (!text) { toast('Please enter text', 'error'); return; }
+  if (!peerConnected) { toast('❌ Not connected to peer', 'error'); return; }
+
+  const targetLang = myLang === 'en' ? 'hi' : 'en';
+
+  try {
+    const translated = await translateText(text, myLang, targetLang);
+    showLocalSubtitle(text, translated, true);
+    sendSocketMessage({
+      type: 'subtitle',
+      roomCode: currentRoom,
+      sourceText: text,
+      text: translated,
+      isFinal: true,
+      lang: targetLang,
+    });
+    toast('✅ Sent!', 'success');
+    document.getElementById('manual-text-input').value = '';
+    closeTextInput();
+  } catch(err) {
+    toast('Translation failed: ' + err.message, 'error');
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('text-input-modal')) closeTextInput();
+});
+
+// ══════════════════════════════════════════════════════════════
+// INVITE LINK
+// ══════════════════════════════════════════════════════════════
+async function copyInviteLink() {
+  if (!currentRoom) { toast('Join a room first', 'error'); return; }
+  let link;
+  try {
+    const res = await fetch('/server-info');
+    const info = await res.json();
+    const ip   = info.ips && info.ips[0];
+    const port = info.port || 3000;
+    const protocol = info.protocol || window.location.protocol.replace(':', '');
+    link = ip
+      ? `${protocol}://${ip}:${port}/?room=${encodeURIComponent(currentRoom)}`
+      : `${window.location.origin}/?room=${encodeURIComponent(currentRoom)}`;
+  } catch(e) {
+    link = `${window.location.origin}/?room=${encodeURIComponent(currentRoom)}`;
+  }
+  try {
+    await navigator.clipboard.writeText(link);
+    toast('Invite link copied!', 'success');
+  } catch(e) {
+    window.prompt('Copy this invite link:', link);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  generateCode();
+  checkTranscribeStatus();
+  const params = new URLSearchParams(window.location.search || '');
+  const roomFromUrl = (params.get('room') || '').trim();
+  if (roomFromUrl) {
+    document.getElementById('room-input').value = roomFromUrl.toUpperCase();
+    toast('Room code prefilled — click Join', 'success');
+  }
+});
+</script>
+</body>
+</html>
