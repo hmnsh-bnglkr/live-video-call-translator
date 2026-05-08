@@ -40,6 +40,10 @@ python -m app.main --reload
 
 If `certs/key.pem` and `certs/cert.pem` exist, the server starts with HTTPS automatically. Otherwise it runs on HTTP.
 
+#### "Regenerate certificates"
+→ Delete `certs/` folder
+→ Run `npm run generate-certs` again
+
 ### 4. Open the app
 - Open `http://localhost:3000` or `https://localhost:3000` in two Chrome/Edge tabs
 - Join the same room code in both tabs
